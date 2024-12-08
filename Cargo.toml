@@ -1,0 +1,9 @@
+[package]
+name = "bulkit"
+version = "0.1.0-dev"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.23", features = ["derive"] }
+path-clean = "1.0.1"
+tempfile = "3.14.0"
