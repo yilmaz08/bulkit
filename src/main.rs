@@ -29,6 +29,9 @@ fn yes_no(prompt: &str) -> bool {
 struct Args {
     #[arg(help="Files to rename/move")]
     files: Vec<PathBuf>,
+
+    #[arg(help="Select editor (default: $EDITOR)", short, long)]
+    editor: Option<String>
 }
 
 fn edit(paths: Vec<PathBuf>, editor: String) -> Vec<String> {
@@ -39,10 +42,10 @@ fn edit(paths: Vec<PathBuf>, editor: String) -> Vec<String> {
         writeln!(temp_file, "{}", paths[i].display()).unwrap();
     }
 
-    Command::new(editor)
-        .arg(&temp_path)
-        .status()
-        .expect("Failed to open editor");
+    let mut command = Command::new(editor);
+    command.arg(&temp_path);
+    println!(">>> Running: {} {}", &command.get_program().to_str().unwrap(), &temp_path.display());
+    command.status().expect("Failed to open editor");
 
     let content = fs::read_to_string(temp_path).unwrap();
     content.split("\n").map(|s| s.to_string()).collect::<Vec<String>>()
@@ -68,7 +71,7 @@ fn compare(original_paths: Vec<PathBuf>, new_paths: Vec<String>) -> (Vec<(PathBu
 
     // Confirmation
     if paths_move.len() == 0 && paths_delete.len() == 0 {
-        println!("Nothing changed!");
+        println!(">>> Nothing changed!");
         return (Vec::<(PathBuf, PathBuf)>::new(), Vec::<PathBuf>::new());
     }
     if paths_move.len() > 0 {
@@ -110,7 +113,10 @@ fn delete_file(path: PathBuf) {
 fn main() {
     let args = Args::parse();
 
-    let editor = env::var("EDITOR").unwrap_or("nano".to_string());
+    let editor = match args.editor {
+        Some(val) => val,
+        None => env::var("EDITOR").unwrap_or("nano".to_string())
+    };
 
     let new_paths = edit(args.files.clone(), editor);
     let (paths_move, paths_delete) = compare(args.files, new_paths);
