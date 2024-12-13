@@ -31,7 +31,7 @@ struct Args {
     files: Vec<PathBuf>,
 }
 
-fn edit(paths: Vec<PathBuf>, editor: String) -> Vec<PathBuf> {
+fn edit(paths: Vec<PathBuf>, editor: String) -> Vec<String> {
     let mut temp_file = NamedTempFile::new().unwrap();
     let temp_path = temp_file.path().to_path_buf();
 
@@ -45,34 +45,49 @@ fn edit(paths: Vec<PathBuf>, editor: String) -> Vec<PathBuf> {
         .expect("Failed to open editor");
 
     let content = fs::read_to_string(temp_path).unwrap();
-    let lines = content.split("\n").filter(|s| !s.is_empty()).collect::<Vec<&str>>();
-
-    let mut new_paths: Vec<PathBuf> = Vec::<PathBuf>::new();
-    for line in lines {
-        new_paths.push(PathBuf::from(line));
-    }
-
-    return new_paths;
+    content.split("\n").map(|s| s.to_string()).collect::<Vec<String>>()
 }
 
-fn compare(original_paths: Vec<PathBuf>, new_paths: Vec<PathBuf>) -> Vec<(PathBuf, PathBuf)> {
-    if original_paths.len() != new_paths.len() {
-        panic!("Original and new path list sizes do not match! (new: {}, original: {})", new_paths.len(), original_paths.len());
-    }
-    
-    let mut filtered_paths: Vec<(PathBuf, PathBuf)> = Vec::<(PathBuf, PathBuf)>::new();
-    for i in 0..new_paths.len() {
-        if get_absolute_path(&new_paths[i]) != get_absolute_path(&original_paths[i]) {
-            filtered_paths.push((original_paths[i].clone(), new_paths[i].clone()));
-            println!("\"{}\" -> \"{}\"", original_paths[i].clone().display(), new_paths[i].clone().display());
+fn compare(original_paths: Vec<PathBuf>, new_paths: Vec<String>) -> (Vec<(PathBuf, PathBuf)>, Vec<PathBuf>) {
+    let mut paths_move: Vec<(PathBuf, PathBuf)> = Vec::<(PathBuf, PathBuf)>::new();
+    let mut paths_delete: Vec<PathBuf> = Vec::<PathBuf>::new();
+    for i in 0..original_paths.len() {
+        if new_paths.len() <= i {
+            paths_delete.push(original_paths[i].clone());
+            continue;
+        }
+        if new_paths[i].is_empty() {
+            paths_delete.push(original_paths[i].clone());
+            continue;
+        }
+        let path = PathBuf::from(new_paths[i].clone());
+        if get_absolute_path(&path) != get_absolute_path(&original_paths[i]) {
+            paths_move.push((original_paths[i].clone(), path));
         }
     }
 
-    if filtered_paths.len() > 0 && yes_no("Do you accept?") == false {
-        return Vec::<(PathBuf, PathBuf)>::new();
+    // Confirmation
+    if paths_move.len() == 0 && paths_delete.len() == 0 {
+        println!("Nothing changed!");
+        return (Vec::<(PathBuf, PathBuf)>::new(), Vec::<PathBuf>::new());
+    }
+    if paths_move.len() > 0 {
+        println!(">>> Move:");
+        for path in &paths_move {
+            println!("\"{}\" -> \"{}\"", path.0.display(), path.1.display());
+        }
+    }
+    if paths_delete.len() > 0 {
+        println!(">>> Delete:");
+        for path in &paths_delete {
+            println!("\"{}\"", path.display());
+        }
+    }
+    if !yes_no(">>> Are you sure?") {
+        return (Vec::<(PathBuf, PathBuf)>::new(), Vec::<PathBuf>::new());
     }
 
-    return filtered_paths;
+    return (paths_move, paths_delete);
 }
 
 fn move_file(original: PathBuf, new: PathBuf) {
@@ -82,15 +97,28 @@ fn move_file(original: PathBuf, new: PathBuf) {
     fs::rename(original, new).unwrap();
 }
 
+fn delete_file(path: PathBuf) {
+    if path.is_dir() {
+        fs::remove_dir_all(path).unwrap();
+    } else if path.is_file() {
+        fs::remove_file(path).unwrap();
+    } else {
+        println!("Unknown file type");
+    }
+}
+
 fn main() {
     let args = Args::parse();
 
     let editor = env::var("EDITOR").unwrap_or("nano".to_string());
 
     let new_paths = edit(args.files.clone(), editor);
-    let filtered_paths = compare(args.files, new_paths);
+    let (paths_move, paths_delete) = compare(args.files, new_paths);
 
-    for path_tuple in filtered_paths {
-        move_file(path_tuple.0, path_tuple.1);
+    for path in paths_move {
+        move_file(path.0, path.1);
+    }
+    for path in paths_delete {
+        delete_file(path);
     }
 }
