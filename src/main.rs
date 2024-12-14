@@ -10,7 +10,8 @@ fn get_absolute_path(relative_path: &PathBuf) -> PathBuf {
     env::current_dir().expect("Failed to get current directory").join(relative_path).clean()
 }
 
-fn display_path(path: &PathBuf) -> String {
+fn display_path(path: &PathBuf, absolute: bool) -> String {
+    let path = if absolute { &get_absolute_path(path) } else { path };
     let mut path_str = path.display().to_string();
 
     // Check if the path is a directory
@@ -42,27 +43,30 @@ struct Args {
     files: Vec<PathBuf>,
 
     #[arg(help="Select editor (default: $EDITOR)", short, long)]
-    editor: Option<String>
+    editor: Option<String>,
+
+    #[arg(help="Show absolute paths", short, long)]
+    absolute: bool
 }
 
-fn edit(paths: Vec<PathBuf>, editor: String) -> Vec<String> {
+fn edit(paths: Vec<PathBuf>, editor: String, absolute: bool) -> Vec<String> {
     let mut temp_file = NamedTempFile::new().unwrap();
     let temp_path = temp_file.path().to_path_buf();
 
     for i in 0..paths.len() {
-        writeln!(temp_file, "{}", display_path(&paths[i])).unwrap();
+        writeln!(temp_file, "{}", display_path(&paths[i], absolute)).unwrap();
     }
 
     let mut command = Command::new(editor);
     command.arg(&temp_path);
-    println!(">>> Running: {} {}", &command.get_program().to_str().unwrap(), display_path(&temp_path.clone()));
+    println!(">>> Running: {} {}", &command.get_program().to_str().unwrap(), display_path(&temp_path.clone(), absolute));
     command.status().expect("Failed to open editor");
 
     let content = fs::read_to_string(temp_path).unwrap();
     content.split("\n").map(|s| s.to_string()).collect::<Vec<String>>()
 }
 
-fn compare(original_paths: Vec<PathBuf>, new_paths: Vec<String>) -> (Vec<(PathBuf, PathBuf)>, Vec<PathBuf>) {
+fn compare(original_paths: Vec<PathBuf>, new_paths: Vec<String>, absolute: bool) -> (Vec<(PathBuf, PathBuf)>, Vec<PathBuf>) {
     let mut paths_move: Vec<(PathBuf, PathBuf)> = Vec::<(PathBuf, PathBuf)>::new();
     let mut paths_delete: Vec<PathBuf> = Vec::<PathBuf>::new();
     for i in 0..original_paths.len() {
@@ -88,13 +92,13 @@ fn compare(original_paths: Vec<PathBuf>, new_paths: Vec<String>) -> (Vec<(PathBu
     if paths_move.len() > 0 {
         println!(">>> Move:");
         for path in &paths_move {
-            println!("\"{}\" -> \"{}\"", display_path(&path.0), display_path(&path.1));
+            println!("\"{}\" -> \"{}\"", display_path(&path.0, absolute), display_path(&path.1, absolute));
         }
     }
     if paths_delete.len() > 0 {
         println!(">>> Delete:");
         for path in &paths_delete {
-            println!("\"{}\"", display_path(path));
+            println!("\"{}\"", display_path(path, absolute));
         }
     }
     if !yes_no(">>> Are you sure?") {
@@ -129,8 +133,8 @@ fn main() {
         None => env::var("EDITOR").unwrap_or("nano".to_string())
     };
 
-    let new_paths = edit(args.files.clone(), editor);
-    let (paths_move, paths_delete) = compare(args.files, new_paths);
+    let new_paths = edit(args.files.clone(), editor, args.absolute);
+    let (paths_move, paths_delete) = compare(args.files, new_paths, args.absolute);
 
     for path in paths_move {
         move_file(path.0, path.1);
