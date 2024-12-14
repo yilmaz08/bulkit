@@ -10,6 +10,17 @@ fn get_absolute_path(relative_path: &PathBuf) -> PathBuf {
     env::current_dir().expect("Failed to get current directory").join(relative_path).clean()
 }
 
+fn display_path(path: &PathBuf) -> String {
+    let mut path_str = path.display().to_string();
+
+    // Check if the path is a directory
+    if path.is_dir() && !path_str.ends_with('/') {
+        path_str.push('/');
+    }
+
+    path_str
+}
+
 fn yes_no(prompt: &str) -> bool {
     print!("{} (y/N): ", prompt);
     std::io::stdout().flush().expect("Failed to flush stdout");
@@ -39,12 +50,12 @@ fn edit(paths: Vec<PathBuf>, editor: String) -> Vec<String> {
     let temp_path = temp_file.path().to_path_buf();
 
     for i in 0..paths.len() {
-        writeln!(temp_file, "{}", paths[i].display()).unwrap();
+        writeln!(temp_file, "{}", display_path(&paths[i])).unwrap();
     }
 
     let mut command = Command::new(editor);
     command.arg(&temp_path);
-    println!(">>> Running: {} {}", &command.get_program().to_str().unwrap(), &temp_path.display());
+    println!(">>> Running: {} {}", &command.get_program().to_str().unwrap(), display_path(&temp_path.clone()));
     command.status().expect("Failed to open editor");
 
     let content = fs::read_to_string(temp_path).unwrap();
@@ -77,13 +88,13 @@ fn compare(original_paths: Vec<PathBuf>, new_paths: Vec<String>) -> (Vec<(PathBu
     if paths_move.len() > 0 {
         println!(">>> Move:");
         for path in &paths_move {
-            println!("\"{}\" -> \"{}\"", path.0.display(), path.1.display());
+            println!("\"{}\" -> \"{}\"", display_path(&path.0), display_path(&path.1));
         }
     }
     if paths_delete.len() > 0 {
         println!(">>> Delete:");
         for path in &paths_delete {
-            println!("\"{}\"", path.display());
+            println!("\"{}\"", display_path(path));
         }
     }
     if !yes_no(">>> Are you sure?") {
